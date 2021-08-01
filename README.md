@@ -1,1 +1,3 @@
 # asynq
+
+Redis Sentinel deployment.
