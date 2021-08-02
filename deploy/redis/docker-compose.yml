@@ -1,0 +1,13 @@
+
+services:
+  redis-0:
+    image: redis:latest
+    volumes:
+      - ${PWD}/redis-0:/etc/redis/
+
+  sentinel-0:
+    image: redis:latest
+    ports:
+      - 5000:26379
+    depends_on:
+      - redis-0

@@ -4,21 +4,61 @@ import (
 	"errors"
 	"fmt"
 	"github.com/FZambia/sentinel"
+	"github.com/gocraft/work"
 	"github.com/gomodule/redigo/redis"
 	"log"
 	"strings"
 	"time"
 )
 
+const (
+	redisPassword = "master-password"
+)
+
 func main() {
+	log.SetFlags(log.Flags() | log.Llongfile)
 	pool := newSentinelPool()
 
 	conn := pool.Get()
-	res, err := redis.String(conn.Do("keys", "*"))
+
+	_ = conn.Send("INCR", "hello")
+	_ = conn.Send("INCR", "world")
+
+	res, err := redis.Strings(conn.Do("KEYS", "*"))
 	if err != nil {
 		log.Println(err)
 	}
 	log.Println(res)
+
+	// setup jobs
+
+}
+
+func setupWorkers(pool *redis.Pool) {
+	var maxConcurrency uint = 10
+	var namespace = "my_app"
+
+	workerPool := work.NewWorkerPool(JobContext{}, maxConcurrency, namespace, pool)
+
+	//workerPool.Middleware()
+
+	jobOpts := work.JobOptions{
+		Priority:       0,     // default
+		MaxFails:       0,     // 0 or 1 => no retry
+		SkipDead:       false, // don't store failed jobs
+		MaxConcurrency: 0,     // how many workers from the pool will be processing this type of job
+	}
+
+	workerPool.JobWithOptions("process_something", jobOpts, (*JobContext).ProcessSomething)
+
+	workerPool.Start()
+}
+
+type JobContext struct {
+}
+
+func (c *JobContext) ProcessSomething(job *work.Job) {
+
 }
 
 func newSentinelPool() *redis.Pool {
@@ -60,6 +100,17 @@ func newSentinelPool() *redis.Pool {
 			if err != nil {
 				return nil, err
 			}
+
+			// auth
+			res, err := redis.String(c.Do("AUTH", redisPassword))
+			if err != nil {
+				log.Println("auth:", err)
+				return nil, err
+			}
+			if res != "OK" {
+				log.Println("auth:", res)
+			}
+
 			return c, nil
 		},
 		TestOnBorrow: func(c redis.Conn, t time.Time) error {
